@@ -8,7 +8,6 @@ use Illuminate\Database\Connection;
 use Illuminate\Database\Connectors\MySqlConnector;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\ServiceProvider as IlluminateServiceProvider;
-use Packback\Domains\Migrations\BatchableBlueprint;
 
 class ServiceProvider extends IlluminateServiceProvider
 {
@@ -45,9 +44,13 @@ class ServiceProvider extends IlluminateServiceProvider
             return new MySqlConnector;
         });
 
+        // Can maybe simplify to...?
+        // $this->app->extend(Blueprint::class, function ($blueprint, $app) {
+        //    return new BatchableBlueprint($blueprint);
+        //});
+
         $this->app->bind(Blueprint::class, function ($app, ...$args) {
             return new BatchableBlueprint(...array_values(array_values($args[0])));
         });
-
     }
 }
