@@ -2,6 +2,9 @@
 
 namespace Daursu\ZeroDowntimeMigration\Connections;
 
+use Illuminate\Support\Collection;
+use Symfony\Component\Process\Process;
+
 class PtOnlineSchemaChangeConnection extends BaseConnection
 {
     /**
@@ -70,23 +73,62 @@ class PtOnlineSchemaChangeConnection extends BaseConnection
     protected function runQueries($queries)
     {
         $table = $this->extractTableFromQuery($queries[0]);
+        $cleanQueries = collect($queries)->map(function  ($query) {
+            return $this->cleanQuery($query);
+        });
+        $transformedQueries = $this->getTransformedQueries($table, $cleanQueries);
 
-        $cleanQueries = [];
-        foreach($queries as $query) {
-            $cleanQueries[] = $this->cleanQuery($query);
-        }
+        return $this->runProcess(
+            $this->makeCommand($table, $transformedQueries, $this->isPretending())
+        );
+    }
 
-        return $this->runProcess(array_merge(
-            [
-                'pt-online-schema-change',
-                $this->isPretending() ? '--dry-run' : '--execute',
-            ],
+    /**
+     * @param Collection<string> $queries
+     * @return Collection<string>
+     */
+    private function getTransformedQueries(string $table, Collection $queries): Collection
+    {
+        $baseNameToNewName = $this->getNewForeignKeyNameMap($table, $queries);
+
+        return $queries->map(function ($query) use ($baseNameToNewName) {
+            $key = str($query)->match("/drop foreign key `(.*?)`/i");
+            if (!$key) {
+                return $query;
+            }
+
+            $baseName = ltrim($key, '_');
+            $newName = $baseNameToNewName->get($baseName);
+
+            return $newName ? str($query)->replace("`$key`", "`$newName`")->value() : $query;
+        });
+    }
+
+    /**
+     * @param Collection<string> $queries
+     * @return Collection<string>
+     */
+    private function getNewForeignKeyNameMap(string $table, Collection $queries): Collection
+    {
+        $process = new Process($this->makeCommand($table, $queries, true));
+        $process->run();
+        $process->stop();
+
+        $newForeignConstraintNames = str($process->getOutput())
+            ->matchAll("/constraint `(.*?)`/i");
+
+        return $newForeignConstraintNames->keyBy(function ($name) {
+            return ltrim($name, '_');
+        });
+    }
+
+    private function makeCommand(string $table, Collection $queries, bool $dryRun = false): array
+    {
+        // array_filter to strip empty lines from `getAdditionalParameters`
+        return array_filter(array_merge(
+            ['pt-online-schema-change', $dryRun ? '--dry-run' : '--execute'],
             $this->getAdditionalParameters(),
-            [
-                '--alter',
-                implode(', ', $cleanQueries),
-                $this->getAuthString($table),
-            ]
+            ['--alter', $queries->join(', '), $this->getAuthString($table)]
         ));
     }
 }
