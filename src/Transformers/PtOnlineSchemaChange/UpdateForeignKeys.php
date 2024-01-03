@@ -30,6 +30,7 @@ class UpdateForeignKeys extends DatabaseTransformer
     private function dryRun(array $command): string
     {
         $process = new Process($command);
+        $process->setTimeout(null);
         $process->run();
         $process->stop();
 
