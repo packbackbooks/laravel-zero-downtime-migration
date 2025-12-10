@@ -6,18 +6,27 @@ use Illuminate\Database\Schema\Blueprint;
 
 /**
  * A variant of `Blueprint` that allows for connection types to define a `statements`
- * method to process an array of SQL query strings at once. For example, pt-online-schema-change
- * lets you pass multiple alter operations to be run on the cloned table.
+ * function to process an array of SQL query strings at once.
  */
 class BatchableBlueprint extends Blueprint
 {
-    public function build()
+    /**
+     * @see Blueprint::build
+     */
+    public function build(Connection $connection, Grammar $grammar)
     {
-        if (method_exists($this->connection, 'statements')) {
-            $statements = $this->toSql();
-            return !empty($statements) ? $this->connection->statements($statements) : null;
+        $statements = $this->toSql($connection, $grammar);
+
+        // Allow connections to run multiple statements at once if they support it.
+        // For example, pt-online-schema-change does for running multiple operations.
+        // on the cloned / "_new" table.
+        if (!empty($statements) && method_exists($connection, 'statements')) {
+            return $connection->statements($statements);
         }
 
-        return parent::build();
+        // Default / "parent" logic - but re-using `$statements`.
+        foreach ($statements as $statement) {
+            $connection->statement($statement);
+        }
     }
 }
