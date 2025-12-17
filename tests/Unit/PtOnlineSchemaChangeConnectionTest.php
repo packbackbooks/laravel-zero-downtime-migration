@@ -4,7 +4,7 @@ namespace Unit;
 
 use Daursu\ZeroDowntimeMigration\Connections\PtOnlineSchemaChangeConnection;
 use Illuminate\Support\Str;
-use PHPUnit\Framework\TestCase;
+use Orchestra\Testbench\TestCase;
 use Symfony\Component\Process\Exception\RuntimeException;
 use Symfony\Component\Process\Process;
 
